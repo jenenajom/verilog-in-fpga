@@ -1,0 +1,13 @@
+module state_to_rgb(
+ input [1:0] state,
+   output reg [7:0] R, G, B
+);
+   always @* begin
+       case(state)
+           2'd0: begin R = 8'hFF; G = 8'h00; B = 8'h00; end // RED
+           2'd1: begin R = 8'hFF; G = 8'hFF; B = 8'h00; end // YELLOW
+           2'd2: begin R = 8'h00; G = 8'hFF; B = 8'h00; end // GREEN
+           default: begin R = 8'h00; G = 8'h00; B = 8'h00; end
+       endcase
+   end
+endmodule
