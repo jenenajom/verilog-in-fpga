@@ -1,0 +1,109 @@
+module ssd1331_colorfill_display(
+  input clk,
+   input rst,
+   input [15:0] fill_color,
+   output sclk,
+   output mosi,
+   output cs,
+   output dc,
+   output res_n,
+   output vccen,
+   output pmoden
+);
+    reg draw_dc = 0;
+    reg drawing = 0;
+   // SPI and OLED init wiring
+   wire spi_done;
+   wire [7:0] spi_data;
+   wire spi_start;
+   wire init_done;
+   wire sclk_int, mosi_int, cs_int, dc_init, res_n_init;
+   assign sclk   = sclk_int;
+   assign mosi   = mosi_int;
+   assign cs     = cs_int;
+   assign dc     = drawing ? draw_dc : dc_init;
+   assign res_n  = res_n_init;
+   assign vccen  = 1'b1;
+   assign pmoden = 1'b1;
+
+   // Drawing FSM
+   reg [6:0] pixel_x = 0;
+   reg [6:0] pixel_y = 0;
+   reg [7:0] draw_spi_data;
+   reg draw_spi_start = 0;
+   reg [3:0] state = 0;
+   reg [7:0] anim_cnt = 0;
+
+   // OLED init and SPI
+   ssd1331_init oled_init (
+       .clk(clk),
+       .rst(rst),
+       .spi_data(spi_data),
+       .spi_start(spi_start),
+       .spi_done(spi_done),
+       .dc(dc_init),
+       .res_n(res_n_init),
+       .init_done(init_done)
+   );
+
+   spi_master spi (
+       .clk(clk),
+       .rst(rst),
+       .data_in(drawing ? draw_spi_data : spi_data),
+       .start(drawing ? draw_spi_start : spi_start),
+       .sclk(sclk_int),
+       .mosi(mosi_int),
+       .cs(cs_int),
+       .done(spi_done)
+   );
+
+   // Drawing FSM
+   always @(posedge clk or posedge rst) begin
+       if (rst) begin
+           state <= 0;
+           drawing <= 0;
+           draw_spi_start <= 0;
+           pixel_x <= 0;
+           pixel_y <= 0;
+           anim_cnt <= 0;
+       end else if (init_done) begin
+           case (state)
+               // Set full screen window
+               0: begin draw_spi_data <= 8'h15; draw_spi_start <= 1; draw_dc <= 0; drawing <= 1; state <= 1; end
+               1: begin draw_spi_start <= 0; if (spi_done) begin draw_spi_data <= 8'd0; draw_spi_start <= 1; state <= 2; end end
+               2: begin draw_spi_start <= 0; if (spi_done) begin draw_spi_data <= 8'd95; draw_spi_start <= 1; state <= 3; end end
+               3: begin draw_spi_start <= 0; if (spi_done) begin draw_spi_data <= 8'h75; draw_spi_start <= 1; state <= 4; end end
+               4: begin draw_spi_start <= 0; if (spi_done) begin draw_spi_data <= 8'd0; draw_spi_start <= 1; state <= 5; end end
+               5: begin draw_spi_start <= 0; if (spi_done) begin draw_spi_data <= 8'd63; draw_spi_start <= 1; state <= 6; end end
+               6: begin draw_spi_start <= 0; if (spi_done) begin draw_dc <= 1; pixel_x <= 0; pixel_y <= 0; state <= 7; end end
+               // Write pixel hi/lo
+               7: begin draw_spi_data <= fill_color[15:8]; draw_spi_start <= 1; state <= 8; end
+               8: begin draw_spi_start <= 0; if (spi_done) begin draw_spi_data <= fill_color[7:0]; draw_spi_start <= 1; state <= 9; end end
+               9: begin
+                   draw_spi_start <= 0;
+                   if (spi_done) begin
+                       if (pixel_x < 95) pixel_x <= pixel_x + 1;
+                       else begin
+                           pixel_x <= 0;
+                           if (pixel_y < 63) pixel_y <= pixel_y + 1;
+                           else begin
+                               pixel_y <= 0;
+                               state <= 10; // frame done
+                           end
+                       end
+                       if (state != 10) state <= 7;
+                   end
+               end
+               // Frame delay then repeat (polls fill_color for new color)
+               10: begin
+                   if (anim_cnt < 10) anim_cnt <= anim_cnt + 1;
+                   else begin
+                       anim_cnt <= 0;
+                       state <= 0;
+                   end
+               end
+               default: state <= 0;
+           endcase
+       end
+   end
+endmodule
