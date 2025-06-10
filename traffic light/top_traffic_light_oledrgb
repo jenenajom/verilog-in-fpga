@@ -1,0 +1,48 @@
+module top_traffic_light_oledrgb(
+    input clk,
+    input rst,
+    output sclk,
+    output mosi,
+    output cs,
+    output dc,
+    output res_n,
+    output vccen,
+    output pmoden
+);
+    // State wires
+    wire [1:0] tl_state;
+    wire [7:0] R, G, B;
+    wire [15:0] fill_color;
+
+    // Traffic light FSM
+    traffic_light_fsm tlfsm(
+        .clk(clk),
+        .rst(rst),
+        .state(tl_state)
+    );
+
+    // State to RGB888
+    state_to_rgb strgb(
+        .state(tl_state),
+        .R(R),
+        .G(G),
+        .B(B)
+    );
+
+    // RGB888 to RGB565
+    assign fill_color = {R[7:3], G[7:2], B[7:3]};
+
+    // Color fill display engine
+    ssd1331_colorfill_display display(
+        .clk(clk),
+        .rst(rst),
+        .fill_color(fill_color),
+        .sclk(sclk),
+        .mosi(mosi),
+        .cs(cs),
+        .dc(dc),
+        .res_n(res_n),
+        .vccen(vccen),
+        .pmoden(pmoden)
+    );
+endmodule
